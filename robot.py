@@ -6,15 +6,22 @@ import sys
 import logging
 import math
 import time
-import importlib.util
 from datetime import datetime, timedelta
 from pandas import DataFrame
 from pathlib import Path
 
-from tinkoff.invest import InstrumentStatus, CandleInterval
-from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse, PortfolioPosition, AccessLevel
-from tinkoff.invest import OrderDirection, OrderType, Quotation
 from tinkoff.invest import (
+    Client,
+    RequestError,
+    PortfolioResponse,
+    PositionsResponse,
+    PortfolioPosition,
+    AccessLevel,
+    OrderDirection,
+    OrderType,
+    Quotation,
+    InstrumentStatus,
+    CandleInterval,
     CandleInstrument,
     MarketDataRequest,
     SubscribeCandlesRequest,
@@ -40,10 +47,10 @@ import bcommon
 Для участия в конкурсе по разработке бота для трейдинга на баз tinkoff.invest (python)
 https://tinkoff.github.io/investAPI
 https://tinkoff.github.io/investAPI/faq_custom_types/
-https://azzrael.ru/api-v2-tinkoff-invest-get-candles-python
 https://github.com/AzzraelCode/api_v2_tinvest/blob/main/v2_portfolio/__init__.py
 https://github.com/AzzraelCode/api_v2_tinvest/blob/main/v2_portfolio/__init__.py#L104
 https://technical-analysis-library-in-python.readthedocs.io/en/latest/index.html
+--
 
 """
 
@@ -53,6 +60,7 @@ def get_list_futures(client):
     :param local_client:
     :return:
     """
+
     try:
         futs = client.instruments.futures().instruments
 
@@ -73,6 +81,7 @@ def get_hist_candles(client, figi, total_day, interval):
     :param interval:
     :return: 
     """
+
     try:
         settings = MarketDataCacheSettings(base_cache_dir=Path(".market_data_cache"))
         market_data_cache = MarketDataCache(settings=settings, services=client)
@@ -96,6 +105,7 @@ def cast_money(client, v, to_rub=True):
     :param v: Quotation from API
     :return: Price in standart float type
     """
+
     r = v.units + v.nano / 1e9 # nano - 9 нулей
     if to_rub and hasattr(v, 'currency') and getattr(v, 'currency') == 'usd':
         r *= get_usdrur(client)
@@ -109,6 +119,7 @@ def create_df(client, candles):
     :param dict candles: List of candles from API
     :return: DataFrame with candles
     """
+
     df = DataFrame([{
             'time': c.time,
             'volume': c.volume,
@@ -144,8 +155,8 @@ def get_accounts(client):
     котoрые текущий токен может хотя бы читать, остальные аккаунты пропускаем
     :return:
     """
-    accounts = [] 
 
+    accounts = [] 
     r = client.users.get_accounts()
     for acc in r.accounts:
         if acc.access_level != AccessLevel.ACCOUNT_ACCESS_LEVEL_NO_ACCESS:
@@ -161,6 +172,7 @@ def get_portfolio_list(client, account_id: str):
     :param account_id:
     :return:
     """
+
     r = client.operations.get_portfolio(account_id=account_id)
     if len(r.positions) < 1:
         return None
@@ -178,6 +190,7 @@ def portfolio_pose_todict(client, p : PortfolioPosition):
     :param p:
     :return:
     """
+
     r = {
             'figi': p.figi,
             'quantity': cast_money(client, p.quantity),
@@ -334,6 +347,11 @@ def backtest(client, start_depo :float, df :DataFrame, ticker :str, lot :int, us
 
 
 def make_buy_order(client, fg, quant, acc_id):
+    """
+    Выставление buy-ордера по рыночной цене
+    :return
+    """
+
     try:
         # Рыночная, без указания цены (по лучшей доступной для объема)
         r = client.orders.post_order(
@@ -353,6 +371,11 @@ def make_buy_order(client, fg, quant, acc_id):
 
 
 def make_sell_order(client, fg, quant, acc_id):
+    """
+    Выставление sell-ордера по рыночной цене
+    :return
+    """
+
     try:
         # Рыночная, без указания цены (по лучшей доступной для объема)
         r = client.orders.post_order(
@@ -518,6 +541,11 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
                 
 
 def get_request(client, my_figi, my_interval):
+    """
+    Подписка на свечи по иснтрументу
+    :return marketdata
+    """
+
     market_data_stream: MarketDataStreamManager = client.create_market_data_stream()
     market_data_stream.candles.subscribe(
         [
@@ -538,6 +566,11 @@ def get_request(client, my_figi, my_interval):
     return marketdata
 
 def write_state(ticker, prc_buy, prc_sell, prc_min, kx):
+    """
+    Запись state-файла с процентами отклонения от средней
+    :return
+    """
+
     file_path = ticker + '_STATE.txt'
     dt_str = datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
     new_str = dt_str + ' ' + ticker + ' ' + str(prc_buy) + ' ' + str(prc_sell) + ' ' + str(prc_min) + ' ' + str(kx)
@@ -547,6 +580,11 @@ def write_state(ticker, prc_buy, prc_sell, prc_min, kx):
 
 
 def read_state(ticker, prc_buy, prc_sell, prc_min, kx):
+    """
+    Чтение state-файла
+    :return
+    """
+
     file_path = ticker + '_STATE.txt'
     if os.path.exists(file_path):
         file1 = open(file_path,"r")
@@ -567,6 +605,11 @@ def read_state(ticker, prc_buy, prc_sell, prc_min, kx):
 
 
 def init_ticker(ticker, figi, fut):
+    """
+    Инициализация граничных значений процентов отклонений для тикера
+    :return
+    """
+
     prc_buy = fut[ticker]['prc_buy']
     prc_sell = fut[ticker]['prc_sell']
     prc_min = fut[ticker]['prc_min']
