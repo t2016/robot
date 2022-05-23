@@ -1,3 +1,4 @@
+#!/usr/local/bin/python3.10 
 import os
 import os.path
 import time
@@ -282,7 +283,7 @@ def backtest(client, start_depo :float, df :DataFrame, ticker :str, lot :int, us
         
         # Условия выполнения гипотезы (испольуются индикаторы RSI, BB и свечи)
         # Если rsi < 30 и значение цены закрытия свечи меньше bbl, то проверяем avg_price: buy
-        if (rsi < 30): # (last_price < bbl) and (rsi < 30) and (c_min > 5):
+        if (rsi < 30) and (last_price < bbl): # and (c_min > 5)
             quant = math.ceil(qbuy*(nums/max_nums + 1.2))
             if (nums+quant) > max_nums:
                 quant = max_nums - nums
@@ -300,7 +301,7 @@ def backtest(client, start_depo :float, df :DataFrame, ticker :str, lot :int, us
                 num_buy_trades += 1
 
         # Иначе, если rsi > 70 и значение цены закрытия свечи больше bbh, то проверяем avg_price: sell
-        elif (rsi > 70): #(last_price > bbh) and (rsi > 70) and (c_max > 5):
+        elif (rsi > 70) and (last_price > bbh): # and (c_max > 5)
             quant = math.ceil(qsell*(nums/max_nums + 1.2))
             if (quant > nums):
                 quant = nums
@@ -316,8 +317,8 @@ def backtest(client, start_depo :float, df :DataFrame, ticker :str, lot :int, us
                     avg_price = 0
                 num_sell_trades += 1
 
-        # stop_loss
-        #if (nums == max_nums):
+        # stop_loss не используется
+        # if (nums == max_nums):
         #    if 100.0*(avg_price/last_price - 1.0) > prc_stop:
         #        # print('stop_loss: ', last_price)
         #        quant = nums
@@ -333,10 +334,6 @@ def backtest(client, start_depo :float, df :DataFrame, ticker :str, lot :int, us
 
 
 def make_buy_order(client, fg, quant, acc_id):
-    """
-    Создание ордера на покупку
-    :return
-    """
     try:
         # Рыночная, без указания цены (по лучшей доступной для объема)
         r = client.orders.post_order(
@@ -347,7 +344,7 @@ def make_buy_order(client, fg, quant, acc_id):
             direction=OrderDirection.ORDER_DIRECTION_BUY,
             order_type=OrderType.ORDER_TYPE_MARKET
         )
-        print(r)
+        bcommon.write_log(LOG, r)
         return(True)
 
     except RequestError as err:
@@ -366,7 +363,7 @@ def make_sell_order(client, fg, quant, acc_id):
             direction=OrderDirection.ORDER_DIRECTION_SELL,
             order_type=OrderType.ORDER_TYPE_MARKET
         )
-        print(r)
+        bcommon.write_log(LOG, r)
         return(True)
 
     except RequestError as err:
@@ -406,6 +403,8 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
         dfc = df.copy(deep=True)
         dfc = dfc.iloc[0:i]
 
+        # last_price = dfc['close'].iloc[-1]
+        # print(last_price)
         prices = client.market_data.get_last_prices(figi=[figi])
         last_price = cast_money(client, prices.last_prices[0].price)
 
@@ -446,15 +445,15 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
         if nums == 0:
             avg_price = 0.0
 
-    print('\n'+ '[' + ticker + ']')
-    print('max_nums: ', max_nums, ' nums: ', nums, ' avg_price: ', avg_price)
-    print('prc_buy: ', prc_buy, 'prc_sell: ', prc_sell, 'prc_min: ', prc_min, 'kx: ', kx)
-    print('rsi: ', rsi, 'bbl: ', round(bbl, 3), 'bbh:', round(bbh, 3))
-    print('act: ', act)
+    bcommon.write_log(LOG, '\n[{0:s}]\n'.format(ticker))
+    bcommon.write_log(LOG, 'max_nums: {0} nums: {1} avg_price: {2}\n'.format(max_nums, nums, avg_price))
+    bcommon.write_log(LOG, 'prc_buy: {0} prc_sell: {1} prc_min: {2} kx: {3}\n'.format(prc_buy, prc_sell, prc_min, kx))
+    bcommon.write_log(LOG, 'rsi: {0} bbl: {1} bbh: {2} \n'.format(rsi, round(bbl, 2), round(bbh, 2)))
+    bcommon.write_log(LOG, 'act: {0}\n'.format(act))
 
     # Если rsi < rsi_buy_limit и значение цены закрытия свечи меньше bbl, то проверяем avg_price: buy
-    if (rsi < rsi_buy_limit) and (last_price < bbl):
-        print('[buy] rsi: ', rsi)
+    if (rsi < rsi_buy_limit): #(last_price < bbl) and (rsi < 30) and (c_min > 5):
+        bcommon.write_log(LOG, ' -> [rsi_buy] rsi: {0}\n'.format(rsi))
         quant = 1 # math.ceil(qbuy*(nums/max_nums + 1.2))
         if int(nums+quant) > max_nums:
             quant = max_nums - nums
@@ -475,7 +474,7 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
                 pr_need_buy = True
 
         if pr_need_buy:
-            print('[make] [buy] ',round(100.0*(avg_price/last_price - 1.0), 2), ' >= ', prc_buy)
+            bcommon.write_log(LOG, '[buy] num: {0} price: {1}\n'.format(quant, last_price))
             if make_buy_order(client, figi, quant, acc_id):
                 nums += quant
                 prc_buy *= kx
@@ -485,7 +484,8 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
                 write_state(ticker, round(prc_buy, 2), round(prc_sell, 2), prc_min, kx)
 
     # Иначе, если rsi > rsi_sell_limit и значение цены закрытия свечи больше bbh, то проверяем avg_price: sell
-    elif (rsi > rsi_sell_limit) and (last_price > bbh):
+    elif (rsi > rsi_sell_limit): #(last_price > bbh) and (rsi > 70) and (c_max > 5):
+        bcommon.write_log(LOG, ' -> [rsi_sell] rsi: {0}\n'.format(rsi))
         quant = 1 # math.ceil(qsell*(nums/max_nums + 1.2))
         if (quant > nums):
             quant = nums
@@ -502,9 +502,9 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
         if (stq >= quant) and (quant > 0) and (last_price > 0.0) and (avg_price > 0):
             if (100.0*(last_price/avg_price - 1.0) >= prc_sell):
                 pr_need_sell = True
-                print('[make] [sell] ',round(100.0*(last_price/avg_price - 1.0), 2), ' >= ', prc_sell)
 
         if pr_need_sell:
+            bcommon.write_log(LOG, '[sell] num: {0} price: {1}\n'.format(quant, last_price))
             if make_sell_order(client, figi, quant, acc_id):
                 nums -= quant
                 prc_sell *= kx
@@ -515,13 +515,9 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
                     prc_buy = prc_min
                     prc_sell = prc_min
                 write_state(ticker, round(prc_buy, 2), round(prc_sell, 2), prc_min, kx)
-
+                
 
 def get_request(client, my_figi, my_interval):
-    """
-    Подписка на инструмент
-    :return
-    """
     market_data_stream: MarketDataStreamManager = client.create_market_data_stream()
     market_data_stream.candles.subscribe(
         [
@@ -534,6 +530,7 @@ def get_request(client, my_figi, my_interval):
 
     marketdata = []
     for marketdata in market_data_stream:
+        # print(marketdata)
         market_data_stream.info.subscribe([InfoInstrument(figi=my_figi)])
         if marketdata.subscribe_info_response:
             market_data_stream.stop()
@@ -541,9 +538,6 @@ def get_request(client, my_figi, my_interval):
     return marketdata
 
 def write_state(ticker, prc_buy, prc_sell, prc_min, kx):
-    """
-    Запись state-файла
-    """
     file_path = ticker + '_STATE.txt'
     dt_str = datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
     new_str = dt_str + ' ' + ticker + ' ' + str(prc_buy) + ' ' + str(prc_sell) + ' ' + str(prc_min) + ' ' + str(kx)
@@ -553,9 +547,6 @@ def write_state(ticker, prc_buy, prc_sell, prc_min, kx):
 
 
 def read_state(ticker, prc_buy, prc_sell, prc_min, kx):
-    """
-    Чтение state-файла
-    """
     file_path = ticker + '_STATE.txt'
     if os.path.exists(file_path):
         file1 = open(file_path,"r")
@@ -576,9 +567,6 @@ def read_state(ticker, prc_buy, prc_sell, prc_min, kx):
 
 
 def init_ticker(ticker, figi, fut):
-    """
-    Инициализация параметров по инструменту
-    """
     prc_buy = fut[ticker]['prc_buy']
     prc_sell = fut[ticker]['prc_sell']
     prc_min = fut[ticker]['prc_min']
@@ -626,12 +614,12 @@ def main():
                 # print(cont)
                 if (cont.ticker in FUT_LIST):
                     # Текущий контракт cont
-                    last_day = 5
+                    last_day = 3 # количество дней при запросе свечей
                     ticker = cont.ticker
                     figi = cont.figi
                     m5 = CandleInterval.CANDLE_INTERVAL_5_MIN
                     m15 = CandleInterval.CANDLE_INTERVAL_15_MIN
-                    max_nums = FUT_LIST[ticker]['max_nums'] # вводим ограничение по кол-ву
+                    max_nums = FUT_LIST[ticker]['max_nums'] # вводим ограничение по кол-ву контрактов
                     rsi_buy_limit = FUT_LIST[ticker]['rsi_buy_limit']
                     rsi_sell_limit = FUT_LIST[ticker]['rsi_sell_limit']
                     sma_period = FUT_LIST[ticker]['sma_period']
@@ -639,22 +627,15 @@ def main():
                     lot = 1
                     usd = False
                     prc_buy, prc_sell, prc_min, kx = init_ticker(ticker, figi, FUT_LIST)
-                    
-                    # Используем свечи m15
+
                     candles = get_hist_candles(client, figi, last_day, m15)
 
                     df = create_df(client, candles)
                     df = dropna(df)
 
-                    # включаем, когда нужен ли back-test инструмента
-                    if RUN_BACKTEST:
-                        start_depo = 10**6 # виртуальный начальный депозит в RUB для бэктеста
-                        backtest(client, start_depo, df, ticker, lot, usd)
-
                     # запрос состояния инструмента
                     status = get_trading_status(client, figi)
                     if (status):
-                        # print('\nTrading enable for %s' %(ticker))
                         act = []
                         for p in port:
                             if p['figi'] == figi:
@@ -664,9 +645,8 @@ def main():
                         check_signal(client, ticker, figi, acc_id, act, limit_depo, max_nums, df, prc_buy, prc_sell, prc_min, kx, 
                                 lot, usd, rsi_buy_limit, rsi_sell_limit, sma_period, wx)
                     else:
-                        print('\nTrading disable for %s' %(ticker))
-
-                    # пауза 2с  после обработка каждого тикера
+                        bcommon.write_log(LOG, 'Trading disable for {0}'.format(ticker))
+                    # Пауза 2s  после обработка каждого тикера
                     time.sleep(2)
 
 
@@ -685,7 +665,7 @@ FUT_LIST = {
         'prc_buy': 1.2, 'prc_sell': 1.2, 'prc_min': 1.2, 'kx': 1.2, # проценты на покупку и продажу
         'max_nums': 4,                                              # максимальное количество контрактов
         'rsi_buy_limit': 30, 'rsi_sell_limit': 70,                  # нижнее и верхнее ограничение для RSI
-        'sma_period': 14, 'wx': 20,                                 # константы для расчета индикаторов RSI и BB
+        'sma_period': 14, 'wx': 20,                                 # константы для расчета значений индикаторов RSI и BB
     },
     'SiM2'  : {
         'prc_buy': 1.2, 'prc_sell': 1.2, 'prc_min': 1.2, 'kx': 1.2,
@@ -696,6 +676,7 @@ FUT_LIST = {
     # ...
 }
 
+logging.basicConfig(format="%(asctime)s %(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
