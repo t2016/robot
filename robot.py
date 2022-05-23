@@ -39,7 +39,7 @@ from ta.utils import dropna
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
 
-# 
+# локальная библиотека
 sys.path.append('lib')
 import bcommon
 
@@ -69,7 +69,6 @@ def get_list_futures(client):
         logger.error("Error tracking_id=%s code=%s", tracking_id, str(err.code))
 
     return futs
-
 
 
 def get_hist_candles(client, figi, total_day, interval):
@@ -475,7 +474,7 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
     bcommon.write_log(LOG, 'act: {0}\n'.format(act))
 
     # Если rsi < rsi_buy_limit и значение цены закрытия свечи меньше bbl, то проверяем avg_price: buy
-    if (rsi < rsi_buy_limit): #(last_price < bbl) and (rsi < 30) and (c_min > 5):
+    if (rsi < rsi_buy_limit) and (last_price < bbl): # and (c_min > 5):
         bcommon.write_log(LOG, ' -> [rsi_buy] rsi: {0}\n'.format(rsi))
         quant = 1 # math.ceil(qbuy*(nums/max_nums + 1.2))
         if int(nums+quant) > max_nums:
@@ -507,7 +506,7 @@ def check_signal(client, ticker, figi, acc_id, act :dict, start_depo :float, mx_
                 write_state(ticker, round(prc_buy, 2), round(prc_sell, 2), prc_min, kx)
 
     # Иначе, если rsi > rsi_sell_limit и значение цены закрытия свечи больше bbh, то проверяем avg_price: sell
-    elif (rsi > rsi_sell_limit): #(last_price > bbh) and (rsi > 70) and (c_max > 5):
+    elif (rsi > rsi_sell_limit) and (last_price > bbh): # and (c_max > 5):
         bcommon.write_log(LOG, ' -> [rsi_sell] rsi: {0}\n'.format(rsi))
         quant = 1 # math.ceil(qsell*(nums/max_nums + 1.2))
         if (quant > nums):
@@ -615,8 +614,6 @@ def init_ticker(ticker, figi, fut):
     prc_min = fut[ticker]['prc_min']
     kx = fut[ticker]['kx']
 
-    # print(prc_buy, prc_sell, prc_min, kx)
-
     file_path = ticker + '_STATE.txt'
     if not(os.path.exists(file_path)):
         write_state(ticker, prc_buy, prc_sell, prc_min, kx)
@@ -634,7 +631,7 @@ def main():
     try:
         with Client(TOKEN) as client:
 
-            # Получаем список аккаунтов доступных для токена (хотя бы на READ)
+            # Получаем список аккаунтов доступных для токена (хотя бы на read)
             accounts = get_accounts(client)
             if (len(accounts) == 0):
                 bcommon.write_log(LOG, 'Нет доступных аккаунтов для трейдинга этим токеном: {0:s}\n'.format(TOKEN)) 
@@ -654,7 +651,6 @@ def main():
 
             # Поиск контрактаиз FUT_LIST
             for cont in get_list_futures(client):
-                # print(cont)
                 if (cont.ticker in FUT_LIST):
                     # Текущий контракт cont
                     last_day = 3 # количество дней при запросе свечей
